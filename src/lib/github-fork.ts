@@ -25,22 +25,32 @@ async function sleep(ms: number) {
 export async function forkRepo(owner: string, repo: string): Promise<{ login: string; repo: string; defaultBranch: string }> {
   const login = await getAuthenticatedGithubLogin();
 
-  const existing = await ghFetch(`/repos/${login}/${repo}`);
+  // Resolve the canonical owner/name first — the GitHub API follows redirects for
+  // renamed repos, and forking must target the current name, not whatever the user typed.
+  const canonicalRes = await ghFetch(`/repos/${owner}/${repo}`);
+  if (!canonicalRes.ok) {
+    throw new Error(`Repository ${owner}/${repo} not found: ${canonicalRes.status}`);
+  }
+  const canonical = await canonicalRes.json();
+  const canonicalOwner = canonical.owner.login as string;
+  const canonicalRepo = canonical.name as string;
+
+  const existing = await ghFetch(`/repos/${login}/${canonicalRepo}`);
   if (!existing.ok) {
-    const forkRes = await ghFetch(`/repos/${owner}/${repo}/forks`, { method: "POST" });
+    const forkRes = await ghFetch(`/repos/${canonicalOwner}/${canonicalRepo}/forks`, { method: "POST" });
     if (!forkRes.ok) {
-      throw new Error(`Failed to fork ${owner}/${repo}: ${forkRes.status} ${forkRes.statusText}`);
+      throw new Error(`Failed to fork ${canonicalOwner}/${canonicalRepo}: ${forkRes.status} ${forkRes.statusText}`);
     }
-    for (let i = 0; i < 15; i++) {
-      await sleep(2000);
-      const check = await ghFetch(`/repos/${login}/${repo}`);
+    for (let i = 0; i < 20; i++) {
+      await sleep(3000);
+      const check = await ghFetch(`/repos/${login}/${canonicalRepo}`);
       if (check.ok) break;
-      if (i === 14) throw new Error("Fork did not become ready in time");
+      if (i === 19) throw new Error("Fork did not become ready in time");
     }
   }
 
-  const repoInfo = await (await ghFetch(`/repos/${login}/${repo}`)).json();
-  return { login, repo, defaultBranch: repoInfo.default_branch as string };
+  const repoInfo = await (await ghFetch(`/repos/${login}/${canonicalRepo}`)).json();
+  return { login, repo: canonicalRepo, defaultBranch: repoInfo.default_branch as string };
 }
 
 export async function commitZeropsYaml(params: {
