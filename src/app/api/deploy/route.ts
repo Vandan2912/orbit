@@ -44,9 +44,11 @@ function withManagedServiceRefs(stack: DetectedStack): DetectedStack {
 async function pollUntilSettled(
   zerops: ZeropsClient,
   serviceStackId: string,
+  onTick: (elapsedSeconds: number, tickIndex: number) => void,
 ): Promise<"success" | "failure" | "timeout"> {
   for (let i = 0; i < MAX_POLLS_PER_ATTEMPT; i++) {
     await sleep(POLL_INTERVAL_MS);
+    onTick((i + 1) * (POLL_INTERVAL_MS / 1000), i + 1);
     const versions = await zerops.listAppVersions(serviceStackId);
     const latest = versions.list[0];
     if (!latest) continue;
@@ -133,7 +135,15 @@ export async function POST(req: NextRequest) {
           currentServiceStackId = created.id;
           if (!currentServiceStackId) throw new Error("Zerops did not return the new service's id");
 
-          outcome = await pollUntilSettled(zerops, currentServiceStackId);
+          outcome = await pollUntilSettled(zerops, currentServiceStackId, (elapsedSeconds, tickIndex) => {
+            // Write bytes on every tick so the SSE connection never sits idle long
+            // enough for a proxy to kill it; only surface a visible line every 3rd tick.
+            if (tickIndex % 3 === 0) {
+              send({ step: "building", message: `Still building… (${elapsedSeconds}s elapsed)`, attempt });
+            } else {
+              controller.enqueue(": heartbeat\n\n");
+            }
+          });
           if (outcome === "success") break;
 
           if (attempt < MAX_ATTEMPTS) {
