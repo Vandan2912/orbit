@@ -41,3 +41,13 @@ export type ProgressEvent =
   | { step: "generating-yaml"; message: string }
   | { step: "done"; result: { detectedStack: DetectedStack; yaml: string; diagram: string } }
   | { step: "error"; message: string };
+
+export type DeployProgressEvent =
+  | { step: "forking"; message: string }
+  | { step: "committing"; message: string }
+  | { step: "provisioning"; message: string }
+  | { step: "building"; message: string; attempt: number }
+  | { step: "healing"; message: string; attempt: number }
+  | { step: "done"; url: string; projectId: string; attempts: number }
+  | { step: "failed"; message: string; attempts: number }
+  | { step: "error"; message: string };

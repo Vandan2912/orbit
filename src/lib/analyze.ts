@@ -66,21 +66,12 @@ evidence for it (a DB client dependency, a DATABASE_URL-shaped env var, a redis 
 etc). Keep service names short, lowercase, hostname-safe. Call report_detected_stack
 exactly once with your findings.`;
 
-export async function analyzeRepo(params: {
-  repoUrl: string;
-  fileTree: string[];
-  manifests: Record<string, string>;
-}): Promise<DetectedStack> {
-  const treeSample = params.fileTree.slice(0, 300).join("\n");
-  const manifestBlocks = Object.entries(params.manifests)
-    .map(([path, content]) => `--- ${path} ---\n${content}`)
-    .join("\n\n");
-
+async function reportStack(systemPrompt: string, userPrompt: string): Promise<DetectedStack> {
   const response = await client.models.generateContent({
     model: "gemini-flash-latest",
-    contents: `Repository: ${params.repoUrl}\n\nFile tree (sample):\n${treeSample}\n\nManifest files:\n${manifestBlocks}`,
+    contents: userPrompt,
     config: {
-      systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: systemPrompt,
       tools: [{ functionDeclarations: [REPORT_TOOL] }],
       toolConfig: {
         functionCallingConfig: {
@@ -96,4 +87,51 @@ export async function analyzeRepo(params: {
     throw new Error("Gemini did not return a structured analysis");
   }
   return DetectedStackSchema.parse(call.args);
+}
+
+export async function analyzeRepo(params: {
+  repoUrl: string;
+  fileTree: string[];
+  manifests: Record<string, string>;
+}): Promise<DetectedStack> {
+  const treeSample = params.fileTree.slice(0, 300).join("\n");
+  const manifestBlocks = Object.entries(params.manifests)
+    .map(([path, content]) => `--- ${path} ---\n${content}`)
+    .join("\n\n");
+
+  return reportStack(
+    SYSTEM_PROMPT,
+    `Repository: ${params.repoUrl}\n\nFile tree (sample):\n${treeSample}\n\nManifest files:\n${manifestBlocks}`,
+  );
+}
+
+const SELF_HEAL_SYSTEM_PROMPT = `You previously proposed a Zerops deployment config for a
+repository and it failed to build/deploy. Zerops's public API does not expose granular
+build stdout/stderr, only pass/fail — so reason from common root causes: wrong runtime
+base version, a build command that doesn't match the actual package manager/lockfile in
+the repo (e.g. running npm when there's only a pnpm-lock.yaml), a monorepo where the
+buildable app lives in a subdirectory so commands must cd into it and deployFiles must
+point at the right output, a start command that doesn't match how the app actually
+boots, or a missing/incorrectly named port. Produce a corrected, more conservative
+report_detected_stack call. Keep whatever was clearly correct; fix what's most likely to
+have broken the build.`;
+
+export async function regenerateStackOnFailure(params: {
+  repoUrl: string;
+  fileTree: string[];
+  manifests: Record<string, string>;
+  previousStack: DetectedStack;
+  attempt: number;
+}): Promise<DetectedStack> {
+  const treeSample = params.fileTree.slice(0, 300).join("\n");
+  const manifestBlocks = Object.entries(params.manifests)
+    .map(([path, content]) => `--- ${path} ---\n${content}`)
+    .join("\n\n");
+
+  return reportStack(
+    SELF_HEAL_SYSTEM_PROMPT,
+    `Repository: ${params.repoUrl}\n\nThis is retry attempt ${params.attempt}.\n\n` +
+      `Previous (failed) detected stack:\n${JSON.stringify(params.previousStack, null, 2)}\n\n` +
+      `File tree (sample):\n${treeSample}\n\nManifest files:\n${manifestBlocks}`,
+  );
 }
