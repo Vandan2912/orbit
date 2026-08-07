@@ -1,50 +1,56 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI, FunctionCallingConfigMode, Type, type FunctionDeclaration } from "@google/genai";
 import { DetectedStackSchema, type DetectedStack } from "./types";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const REPORT_TOOL: Anthropic.Tool = {
+const REPORT_TOOL: FunctionDeclaration = {
   name: "report_detected_stack",
   description: "Report the detected architecture for this repository as structured data.",
-  input_schema: {
-    type: "object",
+  parameters: {
+    type: Type.OBJECT,
     properties: {
       services: {
-        type: "array",
-        minItems: 1,
+        type: Type.ARRAY,
         items: {
-          type: "object",
+          type: Type.OBJECT,
           properties: {
-            name: { type: "string" },
-            role: { type: "string", enum: ["frontend", "api", "worker", "static"] },
-            language: { type: "string" },
-            framework: { type: ["string", "null"] },
-            zeropsBase: { type: "string" },
-            buildCommands: { type: "array", items: { type: "string" } },
-            startCommand: { type: "string" },
-            ports: { type: "array", items: { type: "integer" } },
-            envVariables: { type: "object", additionalProperties: { type: "string" } },
-            reasoning: { type: "string" },
+            name: { type: Type.STRING },
+            role: { type: Type.STRING, enum: ["frontend", "api", "worker", "static"] },
+            language: { type: Type.STRING },
+            framework: { type: Type.STRING, description: "framework name, or empty string if none" },
+            zeropsBase: { type: Type.STRING },
+            buildCommands: { type: Type.ARRAY, items: { type: Type.STRING } },
+            startCommand: { type: Type.STRING },
+            ports: { type: Type.ARRAY, items: { type: Type.INTEGER } },
+            envVariables: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: { key: { type: Type.STRING }, value: { type: Type.STRING } },
+                required: ["key", "value"],
+              },
+            },
+            reasoning: { type: Type.STRING },
           },
           required: ["name", "role", "language", "framework", "zeropsBase", "buildCommands", "startCommand", "ports", "reasoning"],
         },
       },
       managedServices: {
-        type: "array",
+        type: Type.ARRAY,
         items: {
-          type: "object",
+          type: Type.OBJECT,
           properties: {
             type: {
-              type: "string",
+              type: Type.STRING,
               enum: ["postgresql", "mysql", "mongodb", "valkey", "elasticsearch", "rabbitmq", "objectstorage", "nats"],
             },
-            hostname: { type: "string" },
-            reasoning: { type: "string" },
+            hostname: { type: Type.STRING },
+            reasoning: { type: Type.STRING },
           },
           required: ["type", "hostname", "reasoning"],
         },
       },
-      summary: { type: "string" },
+      summary: { type: Type.STRING },
     },
     required: ["services", "managedServices", "summary"],
   },
@@ -70,25 +76,24 @@ export async function analyzeRepo(params: {
     .map(([path, content]) => `--- ${path} ---\n${content}`)
     .join("\n\n");
 
-  const message = await client.messages.create({
-    model: "claude-sonnet-5",
-    max_tokens: 4096,
-    system: SYSTEM_PROMPT,
-    tools: [REPORT_TOOL],
-    tool_choice: { type: "tool", name: "report_detected_stack" },
-    messages: [
-      {
-        role: "user",
-        content: `Repository: ${params.repoUrl}\n\nFile tree (sample):\n${treeSample}\n\nManifest files:\n${manifestBlocks}`,
+  const response = await client.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: `Repository: ${params.repoUrl}\n\nFile tree (sample):\n${treeSample}\n\nManifest files:\n${manifestBlocks}`,
+    config: {
+      systemInstruction: SYSTEM_PROMPT,
+      tools: [{ functionDeclarations: [REPORT_TOOL] }],
+      toolConfig: {
+        functionCallingConfig: {
+          mode: FunctionCallingConfigMode.ANY,
+          allowedFunctionNames: ["report_detected_stack"],
+        },
       },
-    ],
+    },
   });
 
-  const toolUse = message.content.find(
-    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
-  );
-  if (!toolUse) {
-    throw new Error("Claude did not return a structured analysis");
+  const call = response.functionCalls?.[0];
+  if (!call) {
+    throw new Error("Gemini did not return a structured analysis");
   }
-  return DetectedStackSchema.parse(toolUse.input);
+  return DetectedStackSchema.parse(call.args);
 }

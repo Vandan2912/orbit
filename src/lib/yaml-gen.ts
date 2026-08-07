@@ -17,8 +17,8 @@ function serviceToYamlBlock(service: DetectedService) {
       base: service.zeropsBase,
       ports: service.ports.map((port) => ({ port, httpSupport: isHttp })),
       start: service.startCommand,
-      ...(Object.keys(service.envVariables).length > 0
-        ? { envVariables: service.envVariables }
+      ...(service.envVariables.length > 0
+        ? { envVariables: Object.fromEntries(service.envVariables.map((e) => [e.key, e.value])) }
         : {}),
     },
   };

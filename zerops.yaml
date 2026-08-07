@@ -20,8 +20,9 @@ zerops:
         # ${db_connectionString}; valkey similarly exposes ${cache_connectionString}).
         DATABASE_URL: ${db_connectionString}
         REDIS_URL: ${cache_connectionString}
-        # Set as a project-level secret in the Zerops GUI, not committed here.
-        ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+        # GEMINI_API_KEY is set directly as a secret on the "app" service in the
+        # Zerops GUI (Environment Variables tab) — not declared here since it has
+        # no source to reference from another service.
 
 # Managed services (add as project services in Zerops — provisioned separately
 # from this app-level config, e.g. via the GUI "Import services" or

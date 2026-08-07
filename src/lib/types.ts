@@ -1,15 +1,20 @@
 import { z } from "zod";
 
+export const EnvVarSchema = z.object({
+  key: z.string(),
+  value: z.string(),
+});
+
 export const DetectedServiceSchema = z.object({
   name: z.string().describe("short hostname-safe service name, e.g. 'web', 'api', 'worker'"),
   role: z.enum(["frontend", "api", "worker", "static"]),
   language: z.string().describe("e.g. nodejs, python, go, php, dotnet"),
-  framework: z.string().nullable(),
+  framework: z.string().describe("framework name, or empty string if none"),
   zeropsBase: z.string().describe("Zerops runtime base string, e.g. 'nodejs@22', 'python@3.12', 'go@1.22'"),
   buildCommands: z.array(z.string()),
   startCommand: z.string(),
   ports: z.array(z.number().int().min(10).max(65435)),
-  envVariables: z.record(z.string(), z.string()).default({}),
+  envVariables: z.array(EnvVarSchema).default([]),
   reasoning: z.string().describe("one sentence on why this service was detected"),
 });
 

@@ -5,7 +5,7 @@ and it:
 
 1. Fetches the file tree and key manifest files (`package.json`, `go.mod`,
    `requirements.txt`, `Dockerfile`, ...) via the GitHub API
-2. Sends them to Claude to infer the service architecture — languages, frameworks,
+2. Sends them to Gemini to infer the service architecture — languages, frameworks,
    build/start commands, ports, and any managed services (Postgres, Redis, etc) it needs
 3. Generates a working [`zerops.yaml`](https://docs.zerops.io/zerops-yaml/specification)
    for it
@@ -32,14 +32,14 @@ helps others build:
   over SSE), and the `/api/history` route
 - **`db`** — Postgres: stores past analyses (repo URL, detected stack, generated yaml)
 - **`cache`** — Valkey: caches analysis results per `repo@branch` so re-running a demo
-  or re-analyzing a repo is instant instead of re-spending Claude/GitHub API calls
+  or re-analyzing a repo is instant instead of re-spending Gemini/GitHub API calls
 
 See [`zerops.yaml`](./zerops.yaml) for the deployment config.
 
 ## Local development
 
 ```bash
-cp .env.example .env.local   # fill in ANTHROPIC_API_KEY
+cp .env.example .env.local   # fill in GEMINI_API_KEY (free at aistudio.google.com/apikey)
 docker compose up -d         # local Postgres + Valkey
 npm install
 npm run dev
@@ -47,5 +47,6 @@ npm run dev
 
 ## AI tools used
 
-- **Claude (Anthropic API)** — powers the repository analysis inside the product itself
+- **Gemini 2.5 Flash (Google AI free tier)** — powers the repository analysis inside the
+  product itself
 - **Claude Code** — used to build this project

@@ -1,0 +1,13 @@
+project:
+  name: orbit
+services:
+  - hostname: app
+    type: nodejs@22
+    buildFromGit: https://github.com/Vandan2912/orbit
+    enableSubdomainAccess: true
+
+  - hostname: db
+    type: postgresql:single@16
+
+  - hostname: cache
+    type: valkey:single@7.2
