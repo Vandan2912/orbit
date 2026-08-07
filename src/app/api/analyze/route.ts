@@ -59,8 +59,12 @@ export async function POST(req: NextRequest) {
           .join("\n");
         const diagram = generateMermaidDiagram(detectedStack);
 
-        await setCachedAnalysis(cacheKey, JSON.stringify({ detectedStack, yaml: yamlText })).catch(() => {});
-        await saveAnalysis({ repoUrl, detectedStack, generatedYaml: yamlText }).catch(() => {});
+        await setCachedAnalysis(cacheKey, JSON.stringify({ detectedStack, yaml: yamlText })).catch((err) =>
+          console.error("Failed to cache analysis:", err),
+        );
+        await saveAnalysis({ repoUrl, detectedStack, generatedYaml: yamlText }).catch((err) =>
+          console.error("Failed to save analysis to history:", err),
+        );
 
         send({ step: "done", result: { detectedStack, yaml: yamlText, diagram } });
         controller.close();
