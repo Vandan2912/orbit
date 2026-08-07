@@ -69,6 +69,12 @@ export class ZeropsClient {
     return this.request(`/service-stack/${serviceStackId}/app-version`);
   }
 
+  async listServiceStackProcesses(
+    serviceStackId: string,
+  ): Promise<{ list: { actionName: string; status: string; created: string }[] }> {
+    return this.request(`/service-stack/${serviceStackId}/process`);
+  }
+
   async getSubdomainUrl(serviceStackId: string): Promise<string | null> {
     const svc = await this.getServiceStack(serviceStackId);
     return svc.userData.find((d) => d.key === "zeropsSubdomain")?.content ?? null;

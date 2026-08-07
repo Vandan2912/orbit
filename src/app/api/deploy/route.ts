@@ -65,14 +65,17 @@ async function pollUntilSettled(
   serviceStackId: string,
   onTick: (elapsedSeconds: number, tickIndex: number) => void,
 ): Promise<"success" | "failure" | "timeout"> {
+  // The app-version's own `status` field is unreliable — observed stuck at
+  // WAITING_TO_BUILD even after the underlying build process had already FAILED.
+  // The per-service-stack process list reflects the real pipeline state instead.
   for (let i = 0; i < MAX_POLLS_PER_ATTEMPT; i++) {
     await sleep(POLL_INTERVAL_MS);
     onTick((i + 1) * (POLL_INTERVAL_MS / 1000), i + 1);
-    const versions = await zerops.listAppVersions(serviceStackId);
-    const latest = versions.list[0];
-    if (!latest) continue;
-    if (latest.status === "ACTIVE") return "success";
-    if (/FAIL/i.test(latest.status)) return "failure";
+    const { list } = await zerops.listServiceStackProcesses(serviceStackId);
+    const build = list.find((p) => p.actionName === "stack.build");
+    if (!build) continue;
+    if (build.status === "FINISHED") return "success";
+    if (build.status === "FAILED" || build.status === "CANCELED") return "failure";
   }
   return "timeout";
 }
