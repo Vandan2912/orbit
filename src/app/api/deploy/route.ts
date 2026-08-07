@@ -41,6 +41,25 @@ function withManagedServiceRefs(stack: DetectedStack): DetectedStack {
   };
 }
 
+async function checkHealth(url: string): Promise<{ ok: boolean; detail: string }> {
+  for (let i = 0; i < 4; i++) {
+    if (i > 0) await sleep(5000);
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(url, { signal: controller.signal, redirect: "follow" });
+      clearTimeout(timeout);
+      if (res.status < 500) return { ok: true, detail: `HTTP ${res.status}` };
+      if (i === 3) return { ok: false, detail: `HTTP ${res.status} from the live URL` };
+    } catch (err) {
+      if (i === 3) {
+        return { ok: false, detail: err instanceof Error ? err.message : "connection failed" };
+      }
+    }
+  }
+  return { ok: false, detail: "unreachable" };
+}
+
 async function pollUntilSettled(
   zerops: ZeropsClient,
   serviceStackId: string,
@@ -112,6 +131,8 @@ export async function POST(req: NextRequest) {
         let attempt = 1;
         let currentServiceStackId: string | null = null;
         let outcome: "success" | "failure" | "timeout" = "failure";
+        let liveUrl: string | null = null;
+        let failureHint = "";
 
         while (attempt <= MAX_ATTEMPTS) {
           const yamlText = generateZeropsYaml({ ...detectedStack, services: [primary] });
@@ -144,23 +165,30 @@ export async function POST(req: NextRequest) {
               controller.enqueue(": heartbeat\n\n");
             }
           });
-          if (outcome === "success") break;
+
+          if (outcome === "success") {
+            send({ step: "building", message: "Build succeeded — checking whether the app actually serves traffic", attempt });
+            liveUrl = await zerops.getSubdomainUrl(currentServiceStackId);
+            const health = liveUrl ? await checkHealth(liveUrl) : { ok: false, detail: "no subdomain URL returned" };
+            if (health.ok) break;
+            outcome = "failure";
+            failureHint = `The build succeeded and deployed, but a live HTTP check against the app failed: ${health.detail}. This is almost always a port mismatch — Zerops doesn't auto-set a PORT env var, so if the app reads process.env.PORT with a different fallback than the declared port, it won't be reachable.`;
+          } else {
+            failureHint =
+              outcome === "timeout"
+                ? "The build did not finish within the time budget."
+                : "The build itself failed (non-zero exit from a build or start command).";
+          }
 
           if (attempt < MAX_ATTEMPTS) {
-            send({
-              step: "healing",
-              message:
-                outcome === "timeout"
-                  ? "Build is taking too long — regenerating the config and retrying"
-                  : "Build failed — asking Gemini to regenerate the config and retrying",
-              attempt,
-            });
+            send({ step: "healing", message: `${failureHint} Asking Gemini to regenerate the config and retrying.`, attempt });
             const healed = await regenerateStackOnFailure({
               repoUrl,
               fileTree: tree,
               manifests,
               previousStack: { ...detectedStack, services: [primary] },
               attempt,
+              failureHint,
             });
             detectedStack = withManagedServiceRefs({ ...healed, managedServices: detectedStack.managedServices });
             await zerops.deleteServiceStack(currentServiceStackId).catch(() => {});
@@ -168,14 +196,17 @@ export async function POST(req: NextRequest) {
           attempt++;
         }
 
-        if (outcome !== "success" || !currentServiceStackId) {
-          send({ step: "failed", message: `Gave up after ${attempt <= MAX_ATTEMPTS ? attempt : MAX_ATTEMPTS} attempts`, attempts: Math.min(attempt, MAX_ATTEMPTS) });
+        if (outcome !== "success" || !currentServiceStackId || !liveUrl) {
+          send({
+            step: "failed",
+            message: `Gave up after ${Math.min(attempt, MAX_ATTEMPTS)} attempts. ${failureHint}`,
+            attempts: Math.min(attempt, MAX_ATTEMPTS),
+          });
           controller.close();
           return;
         }
 
-        const url = await zerops.getSubdomainUrl(currentServiceStackId);
-        send({ step: "done", url: url ?? "(check the Zerops dashboard for the URL)", projectId: project.id, attempts: attempt });
+        send({ step: "done", url: liveUrl, projectId: project.id, attempts: attempt });
         controller.close();
       } catch (err) {
         send({ step: "error", message: err instanceof Error ? err.message : "Unknown error" });

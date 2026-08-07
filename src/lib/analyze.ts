@@ -106,15 +106,22 @@ export async function analyzeRepo(params: {
 }
 
 const SELF_HEAL_SYSTEM_PROMPT = `You previously proposed a Zerops deployment config for a
-repository and it failed to build/deploy. Zerops's public API does not expose granular
-build stdout/stderr, only pass/fail — so reason from common root causes: wrong runtime
-base version, a build command that doesn't match the actual package manager/lockfile in
-the repo (e.g. running npm when there's only a pnpm-lock.yaml), a monorepo where the
-buildable app lives in a subdirectory so commands must cd into it and deployFiles must
-point at the right output, a start command that doesn't match how the app actually
-boots, or a missing/incorrectly named port. Produce a corrected, more conservative
-report_detected_stack call. Keep whatever was clearly correct; fix what's most likely to
-have broken the build.`;
+repository and either the build failed, or it built but the deployed app didn't actually
+serve traffic (a live HTTP check against it failed). Zerops's public API does not expose
+granular build stdout/stderr, only pass/fail plus whatever health-check result is given
+below — so reason from common root causes:
+- Build failures: wrong runtime base version; a build command that doesn't match the
+  actual package manager/lockfile in the repo (e.g. running npm when there's only a
+  pnpm-lock.yaml); a monorepo where the buildable app lives in a subdirectory so
+  commands must cd into it and deployFiles must point at the right output.
+- "Built but not serving" failures: almost always a port mismatch. Zerops does NOT
+  automatically set a PORT env var to match the declared port — if the app reads
+  process.env.PORT (Express/Node apps very commonly do, often with a hardcoded
+  fallback like 5000/5006/8080 if unset), you must add an explicit envVariable PORT
+  set to the same value as the declared port, or change the declared port to match
+  whatever the app actually defaults to.
+Produce a corrected, more conservative report_detected_stack call. Keep whatever was
+clearly correct; fix what's most likely to have broken it.`;
 
 export async function regenerateStackOnFailure(params: {
   repoUrl: string;
@@ -122,6 +129,7 @@ export async function regenerateStackOnFailure(params: {
   manifests: Record<string, string>;
   previousStack: DetectedStack;
   attempt: number;
+  failureHint?: string;
 }): Promise<DetectedStack> {
   const treeSample = params.fileTree.slice(0, 300).join("\n");
   const manifestBlocks = Object.entries(params.manifests)
@@ -131,6 +139,7 @@ export async function regenerateStackOnFailure(params: {
   return reportStack(
     SELF_HEAL_SYSTEM_PROMPT,
     `Repository: ${params.repoUrl}\n\nThis is retry attempt ${params.attempt}.\n\n` +
+      (params.failureHint ? `What went wrong: ${params.failureHint}\n\n` : "") +
       `Previous (failed) detected stack:\n${JSON.stringify(params.previousStack, null, 2)}\n\n` +
       `File tree (sample):\n${treeSample}\n\nManifest files:\n${manifestBlocks}`,
   );
