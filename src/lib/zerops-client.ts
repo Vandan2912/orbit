@@ -44,7 +44,7 @@ export class ZeropsClient {
   async createServiceStack(
     projectId: string,
     params: { name: string; serviceStackVersionName: string; buildFromGit?: string; enableSubdomainAccess?: boolean },
-  ): Promise<{ serviceStacks: { id: string; name: string }[] }> {
+  ): Promise<{ id: string; name: string }> {
     return this.request(`/project/${projectId}/service-stack`, {
       method: "POST",
       body: JSON.stringify(params),

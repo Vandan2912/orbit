@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
             buildFromGit: `https://github.com/${fork.login}/${fork.repo}`,
             enableSubdomainAccess: true,
           });
-          currentServiceStackId = created.serviceStacks.find((s) => s.name === primary.name)?.id ?? null;
+          currentServiceStackId = created.id;
           if (!currentServiceStackId) throw new Error("Zerops did not return the new service's id");
 
           outcome = await pollUntilSettled(zerops, currentServiceStackId);
