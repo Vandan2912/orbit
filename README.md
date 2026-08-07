@@ -47,6 +47,6 @@ npm run dev
 
 ## AI tools used
 
-- **Gemini 2.5 Flash (Google AI free tier)** — powers the repository analysis inside the
-  product itself
+- **Gemini (`gemini-flash-latest`, Google AI free tier)** — powers the repository
+  analysis inside the product itself
 - **Claude Code** — used to build this project

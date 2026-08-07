@@ -77,7 +77,7 @@ export async function analyzeRepo(params: {
     .join("\n\n");
 
   const response = await client.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-flash-latest",
     contents: `Repository: ${params.repoUrl}\n\nFile tree (sample):\n${treeSample}\n\nManifest files:\n${manifestBlocks}`,
     config: {
       systemInstruction: SYSTEM_PROMPT,
