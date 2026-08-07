@@ -18,3 +18,11 @@ export async function getCachedAnalysis(cacheKey: string): Promise<string | null
 export async function setCachedAnalysis(cacheKey: string, value: string): Promise<void> {
   await getRedis().set(`analysis:${cacheKey}`, value, "EX", CACHE_TTL_SECONDS);
 }
+
+export async function clearAnalysisCache(): Promise<number> {
+  const redis = getRedis();
+  const keys = await redis.keys("analysis:*");
+  if (keys.length === 0) return 0;
+  await redis.del(...keys);
+  return keys.length;
+}
