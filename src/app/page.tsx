@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
+import { OrbitHero } from "@/components/OrbitHero";
+import { HowItWorks } from "@/components/HowItWorks";
 import type { DetectedStack, ProgressEvent, DeployProgressEvent } from "@/lib/types";
 
 type Result = { detectedStack: DetectedStack; yaml: string; diagram: string };
@@ -37,6 +39,28 @@ async function streamSSE<E extends { step: string }>(
       onEvent(JSON.parse(line.slice("data: ".length)) as E);
     }
   }
+}
+
+function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-xl border border-[var(--border)] bg-[var(--panel)] ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function Terminal({ lines, running }: { lines: string[]; running: boolean }) {
+  if (lines.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--void-deep)] p-4 font-mono text-sm">
+      {lines.map((line, i) => (
+        <div key={i} className="text-[var(--text-dim)]">
+          <span className="text-[var(--cyan)]">›</span> {line}
+        </div>
+      ))}
+      {running && <div className="terminal-cursor text-[var(--text-dim)]">&nbsp;</div>}
+    </div>
+  );
 }
 
 export default function Home() {
@@ -100,17 +124,35 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
-      <main className="mx-auto max-w-3xl px-6 py-16">
-        <h1 className="text-3xl font-semibold tracking-tight">Orbit</h1>
-        <p className="mt-2 text-neutral-400">
-          Point it at a public GitHub repo — it infers the service architecture and
-          generates a working <code>zerops.yaml</code> for deploying it on Zerops.
-        </p>
+    <div className="min-h-screen bg-[var(--void)] text-[var(--text)]">
+      <nav className="fixed top-0 right-0 left-0 z-50 border-b border-[var(--border)] bg-[var(--void)]/70 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+          <span className="font-mono text-sm tracking-widest text-[var(--text)]">ORBIT</span>
+          <a
+            href="https://github.com/Vandan2912/orbit"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-[var(--text-dim)] hover:text-[var(--text)]"
+          >
+            Source ↗
+          </a>
+        </div>
+      </nav>
 
-        <form onSubmit={analyze} className="mt-8 flex gap-2">
+      <OrbitHero />
+      <HowItWorks />
+
+      <section id="console" className="relative mx-auto max-w-3xl px-6 py-24">
+        <div className="mb-10 text-center">
+          <h2 className="text-sm font-medium tracking-[0.3em] text-[var(--text-faint)]">
+            MISSION CONTROL
+          </h2>
+          <p className="mt-3 text-2xl font-semibold sm:text-3xl">Run it on a real repo</p>
+        </div>
+
+        <form onSubmit={analyze} className="flex gap-2">
           <input
-            className="flex-1 rounded-md border border-neutral-800 bg-neutral-900 px-4 py-2 outline-none focus:border-neutral-600"
+            className="flex-1 rounded-lg border border-[var(--border-bright)] bg-[var(--panel)] px-4 py-3 font-mono text-sm outline-none placeholder:text-[var(--text-faint)] focus:border-[var(--cyan)]"
             placeholder="https://github.com/owner/repo"
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
@@ -119,66 +161,67 @@ export default function Home() {
           <button
             type="submit"
             disabled={running}
-            className="rounded-md bg-neutral-100 px-5 py-2 font-medium text-neutral-900 disabled:opacity-50"
+            className="rounded-lg bg-[var(--cyan)] px-6 py-3 font-medium text-[var(--void-deep)] transition hover:brightness-110 disabled:opacity-50"
           >
             {running ? "Analyzing…" : "Analyze"}
           </button>
         </form>
 
-        {log.length > 0 && (
-          <div className="mt-6 space-y-1 rounded-md border border-neutral-800 bg-neutral-900 p-4 font-mono text-sm text-neutral-400">
-            {log.map((line, i) => (
-              <div key={i}>→ {line}</div>
-            ))}
-          </div>
-        )}
+        <div className="mt-6">
+          <Terminal lines={log} running={running} />
+        </div>
 
         {error && (
-          <div className="mt-6 rounded-md border border-red-900 bg-red-950 p-4 text-red-300">
+          <Panel className="mt-6 border-[var(--rose)]/40 bg-[var(--rose)]/10! p-4 text-[var(--rose)]">
             {error}
-          </div>
+          </Panel>
         )}
 
         {result && (
-          <div className="mt-8 space-y-8">
-            <section>
-              <h2 className="text-lg font-medium">Architecture</h2>
-              <p className="mt-1 text-neutral-400">{result.detectedStack.summary}</p>
-              <div className="mt-3 rounded-md border border-neutral-800 bg-white p-4">
+          <div className="mt-10 space-y-8 rise-in">
+            <Panel className="p-6">
+              <h3 className="text-xs font-medium tracking-[0.2em] text-[var(--text-faint)]">
+                ARCHITECTURE
+              </h3>
+              <p className="mt-2 text-sm text-[var(--text-dim)]">{result.detectedStack.summary}</p>
+              <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--void-deep)] p-4">
                 <MermaidDiagram chart={result.diagram} />
               </div>
-            </section>
+            </Panel>
 
-            <section>
+            <Panel className="p-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-medium">zerops.yaml</h2>
+                <h3 className="text-xs font-medium tracking-[0.2em] text-[var(--text-faint)]">
+                  ZEROPS.YAML
+                </h3>
                 <button
                   onClick={() => navigator.clipboard.writeText(result.yaml)}
-                  className="text-sm text-neutral-400 hover:text-neutral-100"
+                  className="text-xs text-[var(--text-dim)] transition hover:text-[var(--cyan)]"
                 >
                   Copy
                 </button>
               </div>
-              <pre className="mt-2 max-h-[500px] overflow-auto rounded-md border border-neutral-800 bg-neutral-900 p-4 text-sm text-neutral-200">
+              <pre className="mt-3 max-h-[500px] overflow-auto rounded-lg border border-[var(--border)] bg-[var(--void-deep)] p-4 font-mono text-sm text-[var(--text-dim)]">
                 {result.yaml}
               </pre>
-            </section>
+            </Panel>
 
-            <section className="border-t border-neutral-800 pt-8">
-              <h2 className="text-lg font-medium">Deploy it for real</h2>
-              <p className="mt-1 text-sm text-neutral-400">
-                Orbit forks the repo, commits this <code>zerops.yaml</code> to the fork, and
-                deploys the fork into your own Zerops account via a Personal Access Token
-                (Zerops dashboard → Settings → Access Token Management). If the build fails,
-                Orbit regenerates the config and retries, up to 3 attempts — note Zerops&apos;s
-                public API only exposes pass/fail status, not raw build logs, so retries
-                reason from common failure patterns rather than exact error text.
+            <Panel className="p-6">
+              <h3 className="text-xs font-medium tracking-[0.2em] text-[var(--text-faint)]">
+                LAUNCH SEQUENCE
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--text-dim)]">
+                Orbit forks the repo, commits this config to the fork, and deploys the fork
+                into your own Zerops account via a Personal Access Token (Zerops dashboard →
+                Settings → Access Token Management). If the deploy fails or the app doesn&apos;t
+                actually serve traffic, Orbit regenerates the config and retries — up to 3
+                attempts.
               </p>
 
               <form onSubmit={deploy} className="mt-4 flex gap-2">
                 <input
                   type="password"
-                  className="flex-1 rounded-md border border-neutral-800 bg-neutral-900 px-4 py-2 outline-none focus:border-neutral-600"
+                  className="flex-1 rounded-lg border border-[var(--border-bright)] bg-[var(--panel-raised)] px-4 py-3 font-mono text-sm outline-none placeholder:text-[var(--text-faint)] focus:border-[var(--violet)]"
                   placeholder="Zerops Personal Access Token"
                   value={zeropsApiToken}
                   onChange={(e) => setZeropsApiToken(e.target.value)}
@@ -187,44 +230,54 @@ export default function Home() {
                 <button
                   type="submit"
                   disabled={deploying}
-                  className="rounded-md bg-neutral-100 px-5 py-2 font-medium text-neutral-900 disabled:opacity-50"
+                  className="rounded-lg bg-[var(--violet)] px-6 py-3 font-medium text-[var(--void-deep)] transition hover:brightness-110 disabled:opacity-50"
                 >
-                  {deploying ? "Deploying…" : "Deploy to Zerops"}
+                  {deploying ? "Launching…" : "Launch"}
                 </button>
               </form>
 
-              {deployLog.length > 0 && (
-                <div className="mt-4 space-y-1 rounded-md border border-neutral-800 bg-neutral-900 p-4 font-mono text-sm text-neutral-400">
-                  {deployLog.map((line, i) => (
-                    <div key={i}>→ {line}</div>
-                  ))}
-                </div>
-              )}
+              <div className="mt-4">
+                <Terminal lines={deployLog} running={deploying} />
+              </div>
 
               {deployError && (
-                <div className="mt-4 rounded-md border border-red-900 bg-red-950 p-4 text-red-300">
+                <Panel className="mt-4 border-[var(--rose)]/40 bg-[var(--rose)]/10! p-4 text-sm text-[var(--rose)]">
                   {deployError}
-                </div>
+                </Panel>
               )}
 
               {deployFailed && (
-                <div className="mt-4 rounded-md border border-amber-900 bg-amber-950 p-4 text-amber-300">
+                <Panel className="mt-4 border-[var(--amber)]/40 bg-[var(--amber)]/10! p-4 text-sm text-[var(--amber)]">
                   {deployFailed}
-                </div>
+                </Panel>
               )}
 
               {deployResult && (
-                <div className="mt-4 rounded-md border border-emerald-900 bg-emerald-950 p-4 text-emerald-300">
-                  Live after {deployResult.attempts} attempt{deployResult.attempts === 1 ? "" : "s"}:{" "}
-                  <a href={deployResult.url} target="_blank" rel="noreferrer" className="underline">
+                <Panel className="mt-4 border-[var(--cyan)]/40 bg-[var(--cyan)]/10! p-5">
+                  <div className="flex items-center gap-2 text-sm font-medium text-[var(--cyan)]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--cyan)]" style={{ animation: "twinkle 1.5s ease-in-out infinite" }} />
+                    IN ORBIT — live after {deployResult.attempts} attempt
+                    {deployResult.attempts === 1 ? "" : "s"}
+                  </div>
+                  <a
+                    href={deployResult.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block break-all font-mono text-sm text-[var(--text)] underline decoration-[var(--cyan)]/50 underline-offset-4"
+                  >
                     {deployResult.url}
                   </a>
-                </div>
+                </Panel>
               )}
-            </section>
+            </Panel>
           </div>
         )}
-      </main>
+      </section>
+
+      <footer className="border-t border-[var(--border)] py-10 text-center text-xs text-[var(--text-faint)]">
+        Built with Claude Code + Gemini, deployed on Zerops. Submitted to The Zerops
+        Challenge (WeMakeDevs × Zerops).
+      </footer>
     </div>
   );
 }
