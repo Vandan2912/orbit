@@ -146,9 +146,13 @@ export async function POST(req: NextRequest) {
             message: `Orbit: deploy config (attempt ${attempt})`,
           });
 
-          send({ step: "building", message: `Building ${primary.name} from the fork`, attempt });
+          // A unique name per attempt avoids racing the previous attempt's (best-effort,
+          // non-blocking) deletion — Zerops rejects a same-named service stack that
+          // hasn't finished being torn down yet.
+          const attemptServiceName = attempt === 1 ? primary.name : `${primary.name}${attempt}`;
+          send({ step: "building", message: `Building ${attemptServiceName} from the fork`, attempt });
           const created = await zerops.createServiceStack(project.id, {
-            name: primary.name,
+            name: attemptServiceName,
             serviceStackVersionName: primary.zeropsBase,
             buildFromGit: `https://github.com/${fork.login}/${fork.repo}`,
             enableSubdomainAccess: true,
