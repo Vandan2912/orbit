@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Orbit
 
-## Getting Started
+An AI deploy copilot for [Zerops](https://zerops.io). Point Orbit at a public GitHub repo
+and it:
 
-First, run the development server:
+1. Fetches the file tree and key manifest files (`package.json`, `go.mod`,
+   `requirements.txt`, `Dockerfile`, ...) via the GitHub API
+2. Sends them to Claude to infer the service architecture — languages, frameworks,
+   build/start commands, ports, and any managed services (Postgres, Redis, etc) it needs
+3. Generates a working [`zerops.yaml`](https://docs.zerops.io/zerops-yaml/specification)
+   for it
+4. Renders a live architecture diagram of the inferred services
+5. Streams all of this to the UI in real time as it happens
+
+Built for [The Zerops Challenge](https://www.wemakedevs.org/hackathons/zerops)
+(WeMakeDevs × Zerops, Aug 8–9 2026).
+
+## Why this, not a generic app on Zerops
+
+Zerops doesn't ship a tool that analyzes an arbitrary repo and generates its own
+`zerops.yaml` — `zerops.yaml` is developer-written, and their own agent platform (ZCP)
+works inside a project you've already set up rather than scanning an external repo from
+scratch. Orbit fills that gap, and only makes sense in a Zerops context — it isn't "an
+app that happens to be hosted here."
+
+## Architecture
+
+Orbit is itself a small multi-service Zerops deployment — the same shape of thing it
+helps others build:
+
+- **`app`** — Next.js (TypeScript): the UI, the `/api/analyze` route (streams progress
+  over SSE), and the `/api/history` route
+- **`db`** — Postgres: stores past analyses (repo URL, detected stack, generated yaml)
+- **`cache`** — Valkey: caches analysis results per `repo@branch` so re-running a demo
+  or re-analyzing a repo is instant instead of re-spending Claude/GitHub API calls
+
+See [`zerops.yaml`](./zerops.yaml) for the deployment config.
+
+## Local development
 
 ```bash
+cp .env.example .env.local   # fill in ANTHROPIC_API_KEY
+docker compose up -d         # local Postgres + Valkey
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## AI tools used
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Claude (Anthropic API)** — powers the repository analysis inside the product itself
+- **Claude Code** — used to build this project

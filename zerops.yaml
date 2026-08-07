@@ -1,0 +1,30 @@
+zerops:
+  - setup: app
+    build:
+      base: nodejs@22
+      buildCommands:
+        - npm ci
+        - npm run build
+      deployFiles: ./
+    run:
+      base: nodejs@22
+      ports:
+        - port: 3000
+          httpSupport: true
+      start: npm run start
+      envVariables:
+        # Cross-service refs: Zerops fills these from the "db" (postgresql) and
+        # "cache" (valkey) project services below at deploy time. Confirm the
+        # exact generated variable names for each service type in the Zerops
+        # GUI before first deploy (postgresql typically exposes
+        # ${db_connectionString}; valkey similarly exposes ${cache_connectionString}).
+        DATABASE_URL: ${db_connectionString}
+        REDIS_URL: ${cache_connectionString}
+        # Set as a project-level secret in the Zerops GUI, not committed here.
+        ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+
+# Managed services (add as project services in Zerops — provisioned separately
+# from this app-level config, e.g. via the GUI "Import services" or
+# `zcli project service-import`):
+#   - hostname: db      type: postgresql@16
+#   - hostname: cache    type: valkey@7.2
