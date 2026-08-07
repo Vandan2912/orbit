@@ -114,12 +114,11 @@ below — so reason from common root causes:
   actual package manager/lockfile in the repo (e.g. running npm when there's only a
   pnpm-lock.yaml); a monorepo where the buildable app lives in a subdirectory so
   commands must cd into it and deployFiles must point at the right output.
-- "Built but not serving" failures: almost always a port mismatch. Zerops does NOT
-  automatically set a PORT env var to match the declared port — if the app reads
-  process.env.PORT (Express/Node apps very commonly do, often with a hardcoded
-  fallback like 5000/5006/8080 if unset), you must add an explicit envVariable PORT
-  set to the same value as the declared port, or change the declared port to match
-  whatever the app actually defaults to.
+- "Built but not serving" failures: the calling code already forces a PORT env variable
+  to match the declared port deterministically, so don't guess a port number yourself —
+  that's handled outside this call. Focus instead on whether the start command actually
+  launches the right entrypoint, or whether the declared port itself is wrong (e.g. a
+  static/webserver-style service that should use port 80/8080 by convention).
 Produce a corrected, more conservative report_detected_stack call. Keep whatever was
 clearly correct; fix what's most likely to have broken it.`;
 

@@ -41,6 +41,21 @@ function withManagedServiceRefs(stack: DetectedStack): DetectedStack {
   };
 }
 
+/**
+ * Forces PORT to match the declared port, deterministically, rather than trusting
+ * Gemini to guess an app's actual fallback default (it never sees source files, only
+ * manifests — asking it to "figure out the real fallback" invites hallucination, e.g.
+ * guessing the generic Express default 5000 for an app whose real fallback is 5006).
+ * Almost every Node/Express/etc app that reads process.env.PORT will bind to whatever
+ * is set here, so this alone fixes the overwhelming majority of port-mismatch failures.
+ */
+function withForcedPort(stack: DetectedStack): DetectedStack {
+  const [primary, ...rest] = stack.services;
+  const port = String(primary.ports[0] ?? 3000);
+  const envVariables = [...primary.envVariables.filter((e) => e.key !== "PORT"), { key: "PORT", value: port }];
+  return { ...stack, services: [{ ...primary, envVariables }, ...rest] };
+}
+
 async function checkHealth(url: string): Promise<{ ok: boolean; detail: string }> {
   for (let i = 0; i < 4; i++) {
     if (i > 0) await sleep(5000);
@@ -108,7 +123,7 @@ export async function POST(req: NextRequest) {
         } else {
           detectedStack = await analyzeRepo({ repoUrl, fileTree: tree, manifests });
         }
-        detectedStack = withManagedServiceRefs(detectedStack);
+        detectedStack = withForcedPort(withManagedServiceRefs(detectedStack));
 
         send({ step: "forking", message: `Forking ${ref.owner}/${ref.repo} so Orbit can commit a zerops.yaml without touching the original` });
         const fork = await forkRepo(ref.owner, ref.repo);
@@ -197,7 +212,7 @@ export async function POST(req: NextRequest) {
               attempt,
               failureHint,
             });
-            detectedStack = withManagedServiceRefs({ ...healed, managedServices: detectedStack.managedServices });
+            detectedStack = withForcedPort(withManagedServiceRefs({ ...healed, managedServices: detectedStack.managedServices }));
             await zerops.deleteServiceStack(currentServiceStackId).catch(() => {});
           }
           attempt++;
