@@ -55,15 +55,18 @@ export function RecentTransmissions() {
                 href={entry.repo_url}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--panel)] px-5 py-4 transition hover:border-[var(--border-bright)]"
+                className="group flex items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--panel)] px-5 py-4 transition hover:border-[var(--border-bright)]"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <span
                     className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--cyan)]"
                     style={{ animation: "twinkle 2.4s ease-in-out infinite" }}
                   />
-                  <span className="truncate font-mono text-sm text-[var(--text)]">
+                  <span className="truncate font-mono text-sm text-[var(--text)] underline decoration-[var(--border-bright)] decoration-1 underline-offset-4 transition group-hover:decoration-[var(--cyan)]">
                     {shortRepo(entry.repo_url)}
+                  </span>
+                  <span className="shrink-0 text-[var(--text-faint)] transition group-hover:text-[var(--cyan)]">
+                    ↗
                   </span>
                   {primary && (
                     <span className="hidden shrink-0 rounded-full border border-[var(--border-bright)] px-2 py-0.5 text-[10px] text-[var(--text-dim)] sm:inline">
