@@ -114,11 +114,14 @@ below — so reason from common root causes:
   actual package manager/lockfile in the repo (e.g. running npm when there's only a
   pnpm-lock.yaml); a monorepo where the buildable app lives in a subdirectory so
   commands must cd into it and deployFiles must point at the right output.
-- "Built but not serving" failures: the calling code already forces a PORT env variable
-  to match the declared port deterministically, so don't guess a port number yourself —
-  that's handled outside this call. Focus instead on whether the start command actually
-  launches the right entrypoint, or whether the declared port itself is wrong (e.g. a
-  static/webserver-style service that should use port 80/8080 by convention).
+- "Built but not serving" failures: the calling code already forces PORT (and SERVER_PORT
+  for JVM/Spring apps) to match the declared port deterministically — don't guess a port
+  *number*. But not every framework uses one of those two names: if you recognize this
+  app's language/framework reads a different env var for its port (anything outside
+  Node/Django/Rails/Go and JVM/Spring, which are already handled), add that env var
+  yourself, set to the same value as the declared port. Also check whether the start
+  command actually launches the right entrypoint, or whether the declared port itself
+  is wrong (e.g. a static/webserver-style service that should use 80/8080 by convention).
 Produce a corrected, more conservative report_detected_stack call. Keep whatever was
 clearly correct; fix what's most likely to have broken it.`;
 

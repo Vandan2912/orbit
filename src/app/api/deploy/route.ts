@@ -43,17 +43,23 @@ function withManagedServiceRefs(stack: DetectedStack): DetectedStack {
 }
 
 /**
- * Forces PORT to match the declared port, deterministically, rather than trusting
- * Gemini to guess an app's actual fallback default (it never sees source files, only
- * manifests — asking it to "figure out the real fallback" invites hallucination, e.g.
- * guessing the generic Express default 5000 for an app whose real fallback is 5006).
- * Almost every Node/Express/etc app that reads process.env.PORT will bind to whatever
- * is set here, so this alone fixes the overwhelming majority of port-mismatch failures.
+ * Forces port-related env vars to match the declared port, deterministically, rather
+ * than trusting Gemini to guess an app's actual fallback default (it never sees source
+ * files, only manifests — asking it to "figure out the real fallback" invites
+ * hallucination, e.g. guessing the generic Express default 5000 for an app whose real
+ * fallback is 5006). PORT covers the overwhelming majority of frameworks (Node/Express,
+ * Django, Rails, Go net/http, ...), but not all of them use that exact name — confirmed
+ * against a real failure: Spring Boot reads SERVER_PORT, not PORT, and 502'd until this
+ * was added. Set every convention we know about; unused ones are harmless.
  */
 function withForcedPort(stack: DetectedStack): DetectedStack {
   const [primary, ...rest] = stack.services;
   const port = String(primary.ports[0] ?? 3000);
-  const envVariables = [...primary.envVariables.filter((e) => e.key !== "PORT"), { key: "PORT", value: port }];
+  const isJava = /java|kotlin|spring/i.test(`${primary.language} ${primary.framework}`);
+
+  const forced = [{ key: "PORT", value: port }, ...(isJava ? [{ key: "SERVER_PORT", value: port }] : [])];
+  const forcedKeys = new Set(forced.map((e) => e.key));
+  const envVariables = [...primary.envVariables.filter((e) => !forcedKeys.has(e.key)), ...forced];
   return { ...stack, services: [{ ...primary, envVariables }, ...rest] };
 }
 
@@ -215,6 +221,11 @@ export async function POST(req: NextRequest) {
             });
             detectedStack = withForcedPort(withManagedServiceRefs({ ...healed, managedServices: detectedStack.managedServices }));
             await zerops.deleteServiceStack(currentServiceStackId).catch(() => {});
+            // Give the deleted service-stack's teardown (and any git-source-level lock
+            // tied to it) a moment to actually clear before the next attempt starts —
+            // observed a same-git-source retry fail in <100ms with no pipeline ever
+            // starting, which looks like a race rather than a real build error.
+            await sleep(8000);
           }
           attempt++;
         }
