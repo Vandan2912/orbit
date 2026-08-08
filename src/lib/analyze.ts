@@ -1,5 +1,6 @@
 import { GoogleGenAI, FunctionCallingConfigMode, Type, type FunctionDeclaration } from "@google/genai";
 import { DetectedStackSchema, type DetectedStack } from "./types";
+import { RUNTIME_CATALOG, MANAGED_SERVICE_SUMMARY } from "./zerops-catalog";
 
 const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -42,7 +43,21 @@ const REPORT_TOOL: FunctionDeclaration = {
           properties: {
             type: {
               type: Type.STRING,
-              enum: ["postgresql", "mysql", "mongodb", "valkey", "elasticsearch", "rabbitmq", "objectstorage", "nats"],
+              enum: [
+                "postgresql",
+                "mysql",
+                "mongodb",
+                "valkey",
+                "elasticsearch",
+                "rabbitmq",
+                "objectstorage",
+                "nats",
+                "kafka",
+                "meilisearch",
+                "typesense",
+                "qdrant",
+                "clickhouse",
+              ],
             },
             hostname: { type: Type.STRING },
             reasoning: { type: Type.STRING },
@@ -58,13 +73,23 @@ const REPORT_TOOL: FunctionDeclaration = {
 
 const SYSTEM_PROMPT = `You analyze a GitHub repository's file tree and manifest files to infer what
 services it needs to run on Zerops (a PaaS where each runtime service is described by a
-zerops.yaml with a "base" runtime string like "nodejs@22", "python@3.12", "go@1.22",
-"php@8.3", "static", etc). Infer real, working build and start commands from the actual
-manifest contents (package.json scripts, requirements.txt, go.mod, etc) — don't guess
-generically. Only include a managed service (postgresql, valkey, etc) if there's real
-evidence for it (a DB client dependency, a DATABASE_URL-shaped env var, a redis client,
-etc). Keep service names short, lowercase, hostname-safe. Call report_detected_stack
-exactly once with your findings.`;
+zerops.yaml with a "base" runtime string).
+
+${RUNTIME_CATALOG}
+
+Infer real, working build and start commands from the actual manifest contents
+(package.json scripts, requirements.txt, go.mod, etc) — don't guess generically.
+
+Managed services — only report one if there's real evidence for it (a DB client
+dependency, a DATABASE_URL-shaped env var, a redis client, etc). Current support:
+${MANAGED_SERVICE_SUMMARY}
+Still report a detected type even if it's not supported yet (e.g. mongodb, rabbitmq) —
+say so plainly in its reasoning field so the user knows it was recognized but can't be
+auto-provisioned; don't substitute a different database/broker just because it's
+supported instead.
+
+Keep service names short, lowercase, hostname-safe. Call report_detected_stack exactly
+once with your findings.`;
 
 async function reportStack(systemPrompt: string, userPrompt: string): Promise<DetectedStack> {
   const response = await client.models.generateContent({
@@ -110,10 +135,14 @@ repository and either the build failed, or it built but the deployed app didn't 
 serve traffic (a live HTTP check against it failed). Zerops's public API does not expose
 granular build stdout/stderr, only pass/fail plus whatever health-check result is given
 below — so reason from common root causes:
-- Build failures: wrong runtime base version; a build command that doesn't match the
-  actual package manager/lockfile in the repo (e.g. running npm when there's only a
-  pnpm-lock.yaml); a monorepo where the buildable app lives in a subdirectory so
-  commands must cd into it and deployFiles must point at the right output.
+
+${RUNTIME_CATALOG}
+
+- Build failures: wrong runtime base version — use ONLY a string from the list above,
+  never invent one; a build command that doesn't match the actual package manager/
+  lockfile in the repo (e.g. running npm when there's only a pnpm-lock.yaml); a monorepo
+  where the buildable app lives in a subdirectory so commands must cd into it and
+  deployFiles must point at the right output.
 - "Built but not serving" failures: the calling code already forces PORT (and SERVER_PORT
   for JVM/Spring apps) to match the declared port deterministically — don't guess a port
   *number*. But not every framework uses one of those two names: if you recognize this

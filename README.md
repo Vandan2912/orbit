@@ -23,6 +23,26 @@ works inside a project you've already set up rather than scanning an external re
 scratch. Orbit fills that gap, and only makes sense in a Zerops context — it isn't "an
 app that happens to be hosted here."
 
+## Coverage
+
+Runtime and managed-service support is pulled from Zerops's real service catalog
+(`GET /settings`), not guessed — see [`src/lib/zerops-catalog.ts`](./src/lib/zerops-catalog.ts)
+for the single source of truth used by both the analysis prompt and the actual
+provisioning code.
+
+**Runtimes**: Node.js, Python, Go, PHP (nginx or apache), Java, .NET, Ruby, Rust, Bun,
+Deno, Elixir, Gleam, static sites, generic Nginx, raw Docker.
+
+**Managed services — auto-provisionable today**: PostgreSQL, MySQL (via MariaDB),
+Valkey (Redis-compatible), Elasticsearch, Kafka, Meilisearch, Typesense, Qdrant,
+ClickHouse, Object Storage (S3-compatible).
+
+**Detected but not yet auto-provisionable**: MongoDB and RabbitMQ — Zerops doesn't
+offer either as a managed service as of this writing. Orbit still reports finding them
+in a repo (so you know it noticed) and tells you to add them manually rather than
+silently ignoring them or substituting something else. Support lands here the moment
+Zerops adds them.
+
 ## Architecture
 
 Orbit is itself a small multi-service Zerops deployment — the same shape of thing it

@@ -18,8 +18,26 @@ export const DetectedServiceSchema = z.object({
   reasoning: z.string().describe("one sentence on why this service was detected"),
 });
 
+// The full set Gemini is allowed to report detecting. Not all of these are actually
+// provisionable yet (see MANAGED_SERVICE_VERSIONS in zerops-client.ts) — mongodb and
+// rabbitmq aren't offered by Zerops at all as of this writing, kept here so Orbit can
+// still surface "detected but not supported yet" instead of silently missing them.
 export const DetectedManagedServiceSchema = z.object({
-  type: z.enum(["postgresql", "mysql", "mongodb", "valkey", "elasticsearch", "rabbitmq", "objectstorage", "nats"]),
+  type: z.enum([
+    "postgresql",
+    "mysql",
+    "mongodb",
+    "valkey",
+    "elasticsearch",
+    "rabbitmq",
+    "objectstorage",
+    "nats",
+    "kafka",
+    "meilisearch",
+    "typesense",
+    "qdrant",
+    "clickhouse",
+  ]),
   hostname: z.string(),
   reasoning: z.string(),
 });

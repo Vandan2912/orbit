@@ -81,17 +81,4 @@ export class ZeropsClient {
   }
 }
 
-const MANAGED_SERVICE_VERSIONS: Record<string, string> = {
-  postgresql: "postgresql:single@16",
-  mysql: "mysql:single@8",
-  mongodb: "mongodb:single@7",
-  valkey: "valkey:single@7.2",
-  elasticsearch: "elasticsearch:single@8.16",
-  rabbitmq: "rabbitmq:single@3.13",
-  nats: "nats:single@2.10",
-  objectstorage: "object-storage@1",
-};
-
-export function managedServiceVersion(type: string): string | null {
-  return MANAGED_SERVICE_VERSIONS[type] ?? null;
-}
+export { managedServiceVersion } from "./zerops-catalog";

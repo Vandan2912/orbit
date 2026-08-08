@@ -11,7 +11,8 @@ import { generateZeropsYaml } from "@/lib/yaml-gen";
 import { getCachedAnalysis } from "@/lib/redis";
 import { saveDeployment } from "@/lib/db";
 import { forkRepo, commitZeropsYaml } from "@/lib/github-fork";
-import { ZeropsClient, managedServiceVersion } from "@/lib/zerops-client";
+import { ZeropsClient } from "@/lib/zerops-client";
+import { managedServiceVersion, MANAGED_SERVICE_CATALOG } from "@/lib/zerops-catalog";
 import type { DeployProgressEvent, DetectedStack } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -28,11 +29,17 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Adds Zerops cross-service env refs for detected managed services onto the primary app service. */
+/**
+ * Adds Zerops cross-service env refs for detected managed services onto the primary app
+ * service — only for ones we'll actually provision. A ref to a hostname that's never
+ * created just resolves to nothing at runtime rather than crashing, but there's no
+ * reason to inject a reference to a service that isn't going to exist.
+ */
 function withManagedServiceRefs(stack: DetectedStack): DetectedStack {
-  if (stack.managedServices.length === 0) return stack;
+  const provisionable = stack.managedServices.filter((svc) => managedServiceVersion(svc.type));
+  if (provisionable.length === 0) return stack;
   const [primary, ...rest] = stack.services;
-  const refs = stack.managedServices.map((svc) => ({
+  const refs = provisionable.map((svc) => ({
     key: `${svc.hostname.toUpperCase()}_CONNECTION_STRING`,
     value: `\${${svc.hostname}_connectionString}`,
   }));
@@ -150,7 +157,11 @@ export async function POST(req: NextRequest) {
         for (const svc of detectedStack.managedServices) {
           const version = managedServiceVersion(svc.type);
           if (!version) {
-            send({ step: "provisioning", message: `Skipping ${svc.hostname} (${svc.type}) — no default version mapping yet` });
+            const note = MANAGED_SERVICE_CATALOG[svc.type]?.note ?? "not supported yet";
+            send({
+              step: "provisioning",
+              message: `Detected ${svc.hostname} (${svc.type}) but can't auto-provision it — ${note}. We'll add support for this in a future update; add it manually in the Zerops dashboard for now.`,
+            });
             continue;
           }
           send({ step: "provisioning", message: `Provisioning managed service ${svc.hostname} (${svc.type})` });
