@@ -165,3 +165,56 @@ body {
 .rise-in {
   animation: rise 0.5s ease-out both;
 }
+
+/* ---------- Floating debris drift ---------- */
+
+@keyframes drift-0 {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(10px, -14px) rotate(8deg);
+  }
+}
+
+@keyframes drift-1 {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(-12px, 10px) rotate(-6deg);
+  }
+}
+
+@keyframes drift-2 {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(8px, 16px) rotate(5deg);
+  }
+}
+
+/* ---------- Mission control console ---------- */
+
+.radar-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: conic-gradient(from 0deg, rgba(94, 234, 212, 0.25), transparent 30%);
+  animation: spin 4s linear infinite;
+}
+
+@keyframes count-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

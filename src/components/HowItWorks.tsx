@@ -23,7 +23,7 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section className="relative border-y border-[var(--border)] bg-[var(--void-deep)] py-24">
+    <section id="how-it-works" className="relative border-y border-[var(--border)] bg-[var(--void-deep)] py-24">
       <div className="mx-auto max-w-5xl px-6">
         <h2 className="text-center text-sm font-medium tracking-[0.3em] text-[var(--text-faint)]">
           FLIGHT PATH

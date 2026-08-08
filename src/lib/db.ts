@@ -68,3 +68,30 @@ export async function listRecentAnalyses(limit = 10): Promise<AnalysisRow[]> {
   );
   return rows;
 }
+
+export type Stats = {
+  totalAnalyses: number;
+  uniqueRepos: number;
+  lastAnalyzedAt: string | null;
+};
+
+export async function getStats(): Promise<Stats> {
+  const pool = await getPool();
+  const { rows } = await pool.query<{
+    total_analyses: string;
+    unique_repos: string;
+    last_analyzed_at: string | null;
+  }>(
+    `select
+       count(*) as total_analyses,
+       count(distinct repo_url) as unique_repos,
+       max(created_at) as last_analyzed_at
+     from analyses`,
+  );
+  const row = rows[0];
+  return {
+    totalAnalyses: Number(row?.total_analyses ?? 0),
+    uniqueRepos: Number(row?.unique_repos ?? 0),
+    lastAnalyzedAt: row?.last_analyzed_at ?? null,
+  };
+}

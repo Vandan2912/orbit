@@ -1,7 +1,10 @@
+import { FloatingObjects } from "./FloatingObjects";
+
 export function OrbitHero() {
   return (
     <section className="relative flex min-h-[100svh] flex-col items-center justify-center overflow-hidden">
       <div className="starfield" />
+      <FloatingObjects />
       <div
         className="pointer-events-none absolute inset-0"
         style={{
