@@ -2,7 +2,13 @@ import { GoogleGenAI, FunctionCallingConfigMode, Type, type FunctionDeclaration 
 import { DetectedStackSchema, type DetectedStack } from "./types";
 import { RUNTIME_CATALOG, MANAGED_SERVICE_SUMMARY } from "./zerops-catalog";
 
-const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Gemini's free tier caps at 20 requests/day per key — a handful of deploy attempts
+// (each burning 1-3 calls: initial analysis + up to 2 self-heal regenerations) can
+// exhaust it. Fall through a list of independent keys/quotas rather than hard-failing.
+const apiKeys = [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_2].filter(
+  (k): k is string => Boolean(k),
+);
+const clients = apiKeys.map((apiKey) => new GoogleGenAI({ apiKey }));
 
 const REPORT_TOOL: FunctionDeclaration = {
   name: "report_detected_stack",
@@ -110,27 +116,50 @@ libc6-dev" (go's default base is ubuntu) as a prepareCommands step.
 Keep service names short, lowercase, hostname-safe. Call report_detected_stack exactly
 once with your findings.`;
 
-async function reportStack(systemPrompt: string, userPrompt: string): Promise<DetectedStack> {
-  const response = await client.models.generateContent({
-    model: "gemini-flash-latest",
-    contents: userPrompt,
-    config: {
-      systemInstruction: systemPrompt,
-      tools: [{ functionDeclarations: [REPORT_TOOL] }],
-      toolConfig: {
-        functionCallingConfig: {
-          mode: FunctionCallingConfigMode.ANY,
-          allowedFunctionNames: ["report_detected_stack"],
-        },
-      },
-    },
-  });
+function isQuotaError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.includes("RESOURCE_EXHAUSTED") || message.includes("429") || message.includes("quota");
+}
 
-  const call = response.functionCalls?.[0];
-  if (!call) {
-    throw new Error("Gemini did not return a structured analysis");
+async function reportStack(systemPrompt: string, userPrompt: string): Promise<DetectedStack> {
+  if (clients.length === 0) {
+    throw new Error("No Gemini API key configured (set GEMINI_API_KEY)");
   }
-  return DetectedStackSchema.parse(call.args);
+
+  let lastErr: unknown;
+  for (let i = 0; i < clients.length; i++) {
+    try {
+      const response = await clients[i].models.generateContent({
+        model: "gemini-flash-latest",
+        contents: userPrompt,
+        config: {
+          systemInstruction: systemPrompt,
+          tools: [{ functionDeclarations: [REPORT_TOOL] }],
+          toolConfig: {
+            functionCallingConfig: {
+              mode: FunctionCallingConfigMode.ANY,
+              allowedFunctionNames: ["report_detected_stack"],
+            },
+          },
+        },
+      });
+
+      const call = response.functionCalls?.[0];
+      if (!call) {
+        throw new Error("Gemini did not return a structured analysis");
+      }
+      return DetectedStackSchema.parse(call.args);
+    } catch (err) {
+      lastErr = err;
+      const hasMoreKeys = i < clients.length - 1;
+      if (isQuotaError(err) && hasMoreKeys) {
+        console.error(`Gemini key ${i + 1}/${clients.length} hit quota, falling back to next key`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
 }
 
 export async function analyzeRepo(params: {
