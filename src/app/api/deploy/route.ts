@@ -9,6 +9,7 @@ import {
 import { analyzeRepo, regenerateStackOnFailure } from "@/lib/analyze";
 import { generateZeropsYaml } from "@/lib/yaml-gen";
 import { getCachedAnalysis } from "@/lib/redis";
+import { saveDeployment } from "@/lib/db";
 import { forkRepo, commitZeropsYaml } from "@/lib/github-fork";
 import { ZeropsClient, managedServiceVersion } from "@/lib/zerops-client";
 import type { DeployProgressEvent, DetectedStack } from "@/lib/types";
@@ -227,6 +228,10 @@ export async function POST(req: NextRequest) {
           controller.close();
           return;
         }
+
+        await saveDeployment({ repoUrl, liveUrl, attempts: attempt }).catch((err) =>
+          console.error("Failed to save deployment record:", err),
+        );
 
         send({ step: "done", url: liveUrl, projectId: project.id, attempts: attempt });
         controller.close();

@@ -16,7 +16,15 @@ function ensureSchema(p: Pool): Promise<void> {
            created_at timestamptz not null default now()
          );
          create index if not exists analyses_repo_url_idx on analyses (repo_url);
-         create index if not exists analyses_created_at_idx on analyses (created_at desc);`,
+         create index if not exists analyses_created_at_idx on analyses (created_at desc);
+         create table if not exists deployments (
+           id uuid primary key default gen_random_uuid(),
+           repo_url text not null,
+           live_url text not null,
+           attempts integer not null,
+           created_at timestamptz not null default now()
+         );
+         create index if not exists deployments_repo_url_idx on deployments (repo_url);`,
       )
       .then(() => undefined);
   }
@@ -40,6 +48,8 @@ export type AnalysisRow = {
   detected_stack: unknown;
   generated_yaml: string;
   created_at: string;
+  live_url: string | null;
+  deployed_at: string | null;
 };
 
 export async function saveAnalysis(params: {
@@ -60,13 +70,33 @@ export async function saveAnalysis(params: {
 export async function listRecentAnalyses(limit = 10): Promise<AnalysisRow[]> {
   const pool = await getPool();
   const { rows } = await pool.query<AnalysisRow>(
-    `select id, repo_url, detected_stack, generated_yaml, created_at
-     from analyses
-     order by created_at desc
+    `select a.id, a.repo_url, a.detected_stack, a.generated_yaml, a.created_at,
+            d.live_url, d.created_at as deployed_at
+     from analyses a
+     left join lateral (
+       select live_url, created_at
+       from deployments
+       where deployments.repo_url = a.repo_url
+       order by created_at desc
+       limit 1
+     ) d on true
+     order by a.created_at desc
      limit $1`,
     [limit],
   );
   return rows;
+}
+
+export async function saveDeployment(params: {
+  repoUrl: string;
+  liveUrl: string;
+  attempts: number;
+}): Promise<void> {
+  const pool = await getPool();
+  await pool.query(
+    `insert into deployments (repo_url, live_url, attempts) values ($1, $2, $3)`,
+    [params.repoUrl, params.liveUrl, params.attempts],
+  );
 }
 
 export type Stats = {
