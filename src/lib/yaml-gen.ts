@@ -4,6 +4,10 @@ import { managedServiceVersion, MANAGED_SERVICE_CATALOG } from "./zerops-catalog
 
 function serviceToYamlBlock(service: DetectedService) {
   const isHttp = service.role === "frontend" || service.role === "api" || service.role === "static";
+  const envMap =
+    service.envVariables.length > 0
+      ? Object.fromEntries(service.envVariables.map((e) => [e.key, e.value]))
+      : null;
   return {
     setup: service.name,
     build:
@@ -12,15 +16,16 @@ function serviceToYamlBlock(service: DetectedService) {
             base: service.zeropsBase,
             buildCommands: service.buildCommands,
             deployFiles: "./",
+            // Build-time vars (e.g. CGO_ENABLED for native deps) live in a separate
+            // envVariables block from run — buildCommands never see run's env vars.
+            ...(envMap ? { envVariables: envMap } : {}),
           }
         : undefined,
     run: {
       base: service.zeropsBase,
       ports: service.ports.map((port) => ({ port, httpSupport: isHttp })),
       start: service.startCommand,
-      ...(service.envVariables.length > 0
-        ? { envVariables: Object.fromEntries(service.envVariables.map((e) => [e.key, e.value])) }
-        : {}),
+      ...(envMap ? { envVariables: envMap } : {}),
     },
   };
 }
