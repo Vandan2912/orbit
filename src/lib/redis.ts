@@ -19,9 +19,9 @@ export async function setCachedAnalysis(cacheKey: string, value: string): Promis
   await getRedis().set(`analysis:${cacheKey}`, value, "EX", CACHE_TTL_SECONDS);
 }
 
-export async function clearAnalysisCache(): Promise<number> {
+export async function clearAnalysisCache(repoFilter?: string): Promise<number> {
   const redis = getRedis();
-  const keys = await redis.keys("analysis:*");
+  const keys = await redis.keys(repoFilter ? `analysis:*${repoFilter}*` : "analysis:*");
   if (keys.length === 0) return 0;
   await redis.del(...keys);
   return keys.length;
