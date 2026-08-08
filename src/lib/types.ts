@@ -11,6 +11,10 @@ export const DetectedServiceSchema = z.object({
   language: z.string().describe("e.g. nodejs, python, go, php, dotnet"),
   framework: z.string().describe("framework name, or empty string if none"),
   zeropsBase: z.string().describe("Zerops runtime base string, e.g. 'nodejs@22', 'python@3.12', 'go@1.22'"),
+  prepareCommands: z
+    .array(z.string())
+    .default([])
+    .describe("OS package installs that must run before buildCommands, e.g. 'sudo apt-get install -y gcc'"),
   buildCommands: z.array(z.string()),
   startCommand: z.string(),
   ports: z.array(z.number().int().min(10).max(65435)),

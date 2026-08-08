@@ -20,6 +20,11 @@ const REPORT_TOOL: FunctionDeclaration = {
             language: { type: Type.STRING },
             framework: { type: Type.STRING, description: "framework name, or empty string if none" },
             zeropsBase: { type: Type.STRING },
+            prepareCommands: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "OS package installs to run before buildCommands, e.g. 'sudo apt-get install -y gcc'. Empty if none needed.",
+            },
             buildCommands: { type: Type.ARRAY, items: { type: Type.STRING } },
             startCommand: { type: Type.STRING },
             ports: { type: Type.ARRAY, items: { type: Type.INTEGER } },
@@ -88,14 +93,19 @@ say so plainly in its reasoning field so the user knows it was recognized but ca
 auto-provisioned; don't substitute a different database/broker just because it's
 supported instead.
 
+prepareCommands run before buildCommands and are the right place to install OS packages —
+use "sudo apt-get update && sudo apt-get install -y <pkg>" for ubuntu-based runtime bases
+(this is the default for go, java, dotnet, ruby unless an "alpine/" prefix is used) or
+"sudo apk add --no-cache <pkg>" for alpine-based ones (the default for nodejs, python,
+php, static, and anything explicitly prefixed "alpine/"). Always include "sudo" — build
+containers don't run as root. Never put package-manager installs inside buildCommands.
+
 Go repos with a CGO-linked native dependency (classic case: gorm.io/driver/sqlite, backed
 by mattn/go-sqlite3) will compile fine even with CGO disabled, but panic at runtime the
 instant the code path that uses it executes — before the server ever binds its port,
 so the deployed app silently never serves traffic. If go.mod/go.sum shows one, set a
-build env var CGO_ENABLED=1 AND add a buildCommands step that installs a C toolchain
-before running "go build", e.g.:
-"sh -c 'command -v apk >/dev/null 2>&1 && apk add --no-cache gcc musl-dev || (command -v apt-get >/dev/null 2>&1 && apt-get update && apt-get install -y gcc libc6-dev) || true'"
-as the first buildCommand.
+build env var CGO_ENABLED=1 AND add "sudo apt-get update && sudo apt-get install -y gcc
+libc6-dev" (go's default base is ubuntu) as a prepareCommands step.
 
 Keep service names short, lowercase, hostname-safe. Call report_detected_stack exactly
 once with your findings.`;
@@ -160,15 +170,22 @@ ${RUNTIME_CATALOG}
   yourself, set to the same value as the declared port. Also check whether the start
   command actually launches the right entrypoint, or whether the declared port itself
   is wrong (e.g. a static/webserver-style service that should use 80/8080 by convention).
+- OS packages (a C toolchain, headers, etc) belong in prepareCommands, which runs before
+  buildCommands — never inside buildCommands itself. Always prefix installs with "sudo"
+  (build containers don't run as root): "sudo apt-get update && sudo apt-get install -y
+  <pkg>" for ubuntu-based bases (go/java/dotnet/ruby default to ubuntu unless "alpine/" is
+  used explicitly), "sudo apk add --no-cache <pkg>" for alpine-based ones (nodejs/python/
+  php/static default to alpine). If a previous attempt tried to install packages inside
+  buildCommands and still failed to serve traffic, that's almost certainly why — move it
+  to prepareCommands with sudo.
 - Go apps that "build fine but never serve": if go.mod/go.sum shows a CGO-linked native
   dependency (classic case: gorm.io/driver/sqlite, which is backed by mattn/go-sqlite3),
   the binary compiles successfully even when CGO is disabled, but panics the instant the
   code path that opens the database runs — before the server ever binds its port. Fix by
-  adding a build env var CGO_ENABLED=1 AND a buildCommands step that installs a C
-  toolchain before running "go build", e.g.:
-  "sh -c 'command -v apk >/dev/null 2>&1 && apk add --no-cache gcc musl-dev || (command -v apt-get >/dev/null 2>&1 && apt-get update && apt-get install -y gcc libc6-dev) || true'"
-  as the first buildCommand. The same pattern applies to any other Go dependency that
-  needs cgo (look for "/cgo" imports or known cgo-only drivers in go.mod).
+  adding a build env var CGO_ENABLED=1 AND a prepareCommands step:
+  "sudo apt-get update && sudo apt-get install -y gcc libc6-dev". The same pattern applies
+  to any other Go dependency that needs cgo (look for "/cgo" imports or known cgo-only
+  drivers in go.mod).
 Produce a corrected, more conservative report_detected_stack call. Keep whatever was
 clearly correct; fix what's most likely to have broken it.`;
 

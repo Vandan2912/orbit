@@ -14,6 +14,10 @@ function serviceToYamlBlock(service: DetectedService) {
       service.buildCommands.length > 0
         ? {
             base: service.zeropsBase,
+            // OS package installs (e.g. a C toolchain) run here, before buildCommands —
+            // putting them in buildCommands instead means they run too late or without
+            // the right shell context, per Zerops's own recipe conventions.
+            ...(service.prepareCommands.length > 0 ? { prepareCommands: service.prepareCommands } : {}),
             buildCommands: service.buildCommands,
             deployFiles: "./",
             // Build-time vars (e.g. CGO_ENABLED for native deps) live in a separate

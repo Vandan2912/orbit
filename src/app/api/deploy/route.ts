@@ -29,6 +29,14 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function safeClose(controller: ReadableStreamDefaultController) {
+  try {
+    controller.close();
+  } catch {
+    // already closed/errored (client disconnected) — nothing left to do
+  }
+}
+
 /**
  * Adds Zerops cross-service env refs for detected managed services onto the primary app
  * service — only for ones we'll actually provision. A ref to a hostname that's never
@@ -125,7 +133,18 @@ export async function POST(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (event: DeployProgressEvent) => controller.enqueue(sseEvent(event));
+      // The client (browser tab, or an intermediary in front of it) can drop the SSE
+      // connection at any point during a multi-minute multi-attempt deploy. That must
+      // never take down the retry loop itself — enqueue on a closed/errored controller
+      // throws, and an uncaught throw here previously killed the whole deploy mid-retry
+      // with no further attempts, no error event, and no saved record.
+      const send = (event: DeployProgressEvent) => {
+        try {
+          controller.enqueue(sseEvent(event));
+        } catch (err) {
+          console.error("SSE send failed (client likely disconnected), continuing deploy:", err);
+        }
+      };
       try {
         const ref = parseRepoUrl(repoUrl);
         const branch = await fetchDefaultBranch(ref);
@@ -207,7 +226,11 @@ export async function POST(req: NextRequest) {
             if (tickIndex % 3 === 0) {
               send({ step: "building", message: `Still building… (${elapsedSeconds}s elapsed)`, attempt });
             } else {
-              controller.enqueue(": heartbeat\n\n");
+              try {
+                controller.enqueue(": heartbeat\n\n");
+              } catch {
+                // client disconnected — the poll loop itself must keep running regardless
+              }
             }
           });
 
@@ -227,15 +250,22 @@ export async function POST(req: NextRequest) {
 
           if (attempt < MAX_ATTEMPTS) {
             send({ step: "healing", message: `${failureHint} Asking Gemini to regenerate the config and retrying.`, attempt });
-            const healed = await regenerateStackOnFailure({
-              repoUrl,
-              fileTree: tree,
-              manifests,
-              previousStack: { ...detectedStack, services: [primary] },
-              attempt,
-              failureHint,
-            });
-            detectedStack = withForcedPort(withManagedServiceRefs({ ...healed, managedServices: detectedStack.managedServices }));
+            // A transient failure here (Gemini rate limit, timeout, bad response) must
+            // not take down the whole retry loop — fall back to retrying the same
+            // config rather than aborting the deploy outright.
+            try {
+              const healed = await regenerateStackOnFailure({
+                repoUrl,
+                fileTree: tree,
+                manifests,
+                previousStack: { ...detectedStack, services: [primary] },
+                attempt,
+                failureHint,
+              });
+              detectedStack = withForcedPort(withManagedServiceRefs({ ...healed, managedServices: detectedStack.managedServices }));
+            } catch (err) {
+              console.error("regenerateStackOnFailure failed, retrying with the same config:", err);
+            }
             await zerops.deleteServiceStack(currentServiceStackId).catch(() => {});
             // Confirmed across two independent test runs: attempt 1 against a git
             // source always builds normally (~2min), but any retry against that SAME
@@ -254,7 +284,7 @@ export async function POST(req: NextRequest) {
             message: `Gave up after ${Math.min(attempt, MAX_ATTEMPTS)} attempts. ${failureHint}`,
             attempts: Math.min(attempt, MAX_ATTEMPTS),
           });
-          controller.close();
+          safeClose(controller);
           return;
         }
 
@@ -263,10 +293,10 @@ export async function POST(req: NextRequest) {
         );
 
         send({ step: "done", url: liveUrl, projectId: project.id, attempts: attempt });
-        controller.close();
+        safeClose(controller);
       } catch (err) {
         send({ step: "error", message: err instanceof Error ? err.message : "Unknown error" });
-        controller.close();
+        safeClose(controller);
       }
     },
   });
