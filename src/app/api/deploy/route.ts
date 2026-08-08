@@ -63,18 +63,23 @@ function withForcedPort(stack: DetectedStack): DetectedStack {
   return { ...stack, services: [{ ...primary, envVariables }, ...rest] };
 }
 
+const HEALTH_CHECK_ATTEMPTS = 10;
+const HEALTH_CHECK_INTERVAL_MS = 8000; // ~80s total — JVM apps (Spring Boot etc) can take
+// 20-40s+ to cold-start on a shared-core container; confirmed against a real failure
+// where the old 4-attempt/~15s window gave up before the app had finished booting.
+
 async function checkHealth(url: string): Promise<{ ok: boolean; detail: string }> {
-  for (let i = 0; i < 4; i++) {
-    if (i > 0) await sleep(5000);
+  for (let i = 0; i < HEALTH_CHECK_ATTEMPTS; i++) {
+    if (i > 0) await sleep(HEALTH_CHECK_INTERVAL_MS);
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
       const res = await fetch(url, { signal: controller.signal, redirect: "follow" });
       clearTimeout(timeout);
       if (res.status < 500) return { ok: true, detail: `HTTP ${res.status}` };
-      if (i === 3) return { ok: false, detail: `HTTP ${res.status} from the live URL` };
+      if (i === HEALTH_CHECK_ATTEMPTS - 1) return { ok: false, detail: `HTTP ${res.status} from the live URL` };
     } catch (err) {
-      if (i === 3) {
+      if (i === HEALTH_CHECK_ATTEMPTS - 1) {
         return { ok: false, detail: err instanceof Error ? err.message : "connection failed" };
       }
     }
@@ -221,11 +226,13 @@ export async function POST(req: NextRequest) {
             });
             detectedStack = withForcedPort(withManagedServiceRefs({ ...healed, managedServices: detectedStack.managedServices }));
             await zerops.deleteServiceStack(currentServiceStackId).catch(() => {});
-            // Give the deleted service-stack's teardown (and any git-source-level lock
-            // tied to it) a moment to actually clear before the next attempt starts —
-            // observed a same-git-source retry fail in <100ms with no pipeline ever
-            // starting, which looks like a race rather than a real build error.
-            await sleep(8000);
+            // Confirmed across two independent test runs: attempt 1 against a git
+            // source always builds normally (~2min), but any retry against that SAME
+            // git URL right after the previous attempt's service was deleted fails in
+            // under 100ms with the build pipeline never actually starting — looks like
+            // a backend-side lock/cooldown tied to the git source, not a real build
+            // error. 8s wasn't enough; giving it much more room before retrying.
+            await sleep(35000);
           }
           attempt++;
         }
